@@ -1,9 +1,11 @@
 ---
 name: claude-to-im
 description: |
-  Bridge Claude Code to IM platforms (Telegram, Discord, Feishu/Lark).
-  Start a background daemon that forwards IM messages to Claude Code sessions.
-  Commands: setup, start, stop, status, logs, reconfigure, doctor
+  This skill bridges Claude Code to IM platforms (Telegram, Discord, Feishu/Lark).
+  It should be used when the user wants to start a background daemon that forwards
+  IM messages to Claude Code sessions, or manage that daemon's lifecycle.
+  Subcommands: setup, start, stop, status, logs, reconfigure, doctor.
+argument-hint: "setup | start | stop | status | logs [N] | reconfigure | doctor"
 allowed-tools:
   - Bash
   - Read
@@ -16,12 +18,16 @@ allowed-tools:
 
 # Claude-to-IM Bridge Skill
 
-You are managing the Claude-to-IM bridge. The skill directory is at `$SKILL_DIR`.
+You are managing the Claude-to-IM bridge.
 User data is stored at `~/.claude-to-im/`.
+
+First, locate the skill directory by finding this SKILL.md file:
+- Use Glob with pattern `**/skills/**/claude-to-im/SKILL.md` to find its path, then derive the skill root directory from it.
+- Store that path mentally as SKILL_DIR for all subsequent file references.
 
 Parse the first word of `$ARGUMENTS` as the subcommand.
 
-**IMPORTANT:** Before asking users for any platform credentials, first read `$SKILL_DIR/docs/setup-guides.md` to get the detailed step-by-step guidance for that platform. Present the relevant guide text to the user via AskUserQuestion so they know exactly what to do.
+**IMPORTANT:** Before asking users for any platform credentials, first read `SKILL_DIR/references/setup-guides.md` to get the detailed step-by-step guidance for that platform. Present the relevant guide text to the user via AskUserQuestion so they know exactly what to do.
 
 ## Subcommands
 
@@ -38,7 +44,7 @@ Ask which channels to enable (telegram, discord, feishu). Accept comma-separated
 
 **Step 2 — Collect tokens per channel**
 
-For each enabled channel, read `$SKILL_DIR/docs/setup-guides.md` and present the relevant platform guide to the user. Collect:
+For each enabled channel, read `SKILL_DIR/references/setup-guides.md` and present the relevant platform guide to the user. Collect:
 
 - **Telegram**: Bot Token, Allowed User IDs (optional)
 - **Discord**: Bot Token, Allowed User IDs (optional), Allowed Channel IDs (optional), Allowed Guild IDs (optional)
@@ -65,36 +71,36 @@ Ask for default working directory, model, and mode:
 
 ### `start`
 
-Run: `bash "$SKILL_DIR/scripts/daemon.sh" start`
+Run: `bash "SKILL_DIR/scripts/daemon.sh" start`
 
 Show the output to the user. If it fails, suggest running `doctor`.
 
 ### `stop`
 
-Run: `bash "$SKILL_DIR/scripts/daemon.sh" stop`
+Run: `bash "SKILL_DIR/scripts/daemon.sh" stop`
 
 ### `status`
 
-Run: `bash "$SKILL_DIR/scripts/daemon.sh" status`
+Run: `bash "SKILL_DIR/scripts/daemon.sh" status`
 
 ### `logs`
 
 Extract optional line count N from arguments (default 50).
-Run: `bash "$SKILL_DIR/scripts/daemon.sh" logs N`
+Run: `bash "SKILL_DIR/scripts/daemon.sh" logs N`
 
 ### `reconfigure`
 
 1. Read current config from `~/.claude-to-im/config.env`
 2. Show current settings in a clear table format, with all secrets masked (only last 4 chars visible)
 3. Use AskUserQuestion to ask what the user wants to change
-4. When collecting new values, read `$SKILL_DIR/docs/setup-guides.md` and present the relevant guide for that field
+4. When collecting new values, read `SKILL_DIR/references/setup-guides.md` and present the relevant guide for that field
 5. Update the config file atomically (write to tmp, rename)
 6. Re-validate any changed tokens
 7. Remind user: "Run `/claude-to-im stop` then `/claude-to-im start` to apply the changes."
 
 ### `doctor`
 
-Run: `bash "$SKILL_DIR/scripts/doctor.sh"`
+Run: `bash "SKILL_DIR/scripts/doctor.sh"`
 
 Show results and suggest fixes for any failures.
 

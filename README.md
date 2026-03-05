@@ -247,9 +247,9 @@ Common issues / 常见问题：
 | `Permission timeout` | User didn't respond within 5 min. Tool call auto-denied. / 用户 5 分钟内未响应，工具调用自动拒绝 |
 | `Stale PID file` | Run `stop` then `start`. daemon.sh auto-cleans stale PIDs. / 运行 `stop` 再 `start`，脚本会自动清理 |
 
-See [docs/troubleshooting.md](docs/troubleshooting.md) for more details.
+See [references/troubleshooting.md](references/troubleshooting.md) for more details.
 
-详见 [docs/troubleshooting.md](docs/troubleshooting.md)。
+详见 [references/troubleshooting.md](references/troubleshooting.md)。
 
 ## Security / 安全
 
