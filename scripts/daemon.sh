@@ -8,14 +8,24 @@ LOG_FILE="$CTI_HOME/logs/bridge.log"
 
 ensure_dirs() { mkdir -p "$CTI_HOME"/{data,logs,runtime,data/messages}; }
 
+ensure_built() {
+  if [ ! -f "$SKILL_DIR/dist/daemon.mjs" ]; then
+    echo "Building daemon bundle..."
+    (cd "$SKILL_DIR" && npm run build)
+  fi
+}
+
 case "${1:-help}" in
   start)
     ensure_dirs
+    ensure_built
     if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
       echo "Bridge already running (PID: $(cat "$PID_FILE"))"
       cat "$STATUS_FILE" 2>/dev/null
       exit 1
     fi
+    # Unset CLAUDECODE so the SDK can spawn nested Claude CLI sessions
+    unset CLAUDECODE
     nohup node "$SKILL_DIR/dist/daemon.mjs" >> "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
     sleep 2
