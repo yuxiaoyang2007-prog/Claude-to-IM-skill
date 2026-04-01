@@ -4,7 +4,7 @@
   "description": "Claude Code Skill: Bridge IM platforms (Telegram, Discord, Feishu, QQ) to Claude Code sessions",
   "type": "module",
   "scripts": {
-    "postinstall": "node scripts/patch-sessions-preview.js",
+    "postinstall": "node scripts/patch-sessions-preview.js && node scripts/build.js",
     "build": "node scripts/patch-sessions-preview.js && node scripts/build.js",
     "typecheck": "tsc --noEmit",
     "dev": "tsx src/main.ts",
