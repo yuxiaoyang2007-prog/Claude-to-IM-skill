@@ -17,6 +17,7 @@ export interface Config {
   feishuAppSecret?: string;
   feishuDomain?: string;
   feishuAllowedUsers?: string[];
+  feishuRequireMention?: boolean;
   // Discord
   discordBotToken?: string;
   discordAllowedUsers?: string[];
@@ -93,6 +94,9 @@ export function loadConfig(): Config {
     feishuAppSecret: env.get("CTI_FEISHU_APP_SECRET") || undefined,
     feishuDomain: env.get("CTI_FEISHU_DOMAIN") || undefined,
     feishuAllowedUsers: splitCsv(env.get("CTI_FEISHU_ALLOWED_USERS")),
+    feishuRequireMention: env.has("CTI_FEISHU_REQUIRE_MENTION")
+      ? env.get("CTI_FEISHU_REQUIRE_MENTION") === "true"
+      : undefined,
     discordBotToken: env.get("CTI_DISCORD_BOT_TOKEN") || undefined,
     discordAllowedUsers: splitCsv(env.get("CTI_DISCORD_ALLOWED_USERS")),
     discordAllowedChannels: splitCsv(
@@ -145,6 +149,8 @@ export function saveConfig(config: Config): void {
     "CTI_FEISHU_ALLOWED_USERS",
     config.feishuAllowedUsers?.join(",")
   );
+  if (config.feishuRequireMention !== undefined)
+    out += formatEnvLine("CTI_FEISHU_REQUIRE_MENTION", String(config.feishuRequireMention));
   out += formatEnvLine("CTI_DISCORD_BOT_TOKEN", config.discordBotToken);
   out += formatEnvLine(
     "CTI_DISCORD_ALLOWED_USERS",
@@ -236,6 +242,8 @@ export function configToSettings(config: Config): Map<string, string> {
   if (config.feishuDomain) m.set("bridge_feishu_domain", config.feishuDomain);
   if (config.feishuAllowedUsers)
     m.set("bridge_feishu_allowed_users", config.feishuAllowedUsers.join(","));
+  if (config.feishuRequireMention !== undefined)
+    m.set("bridge_feishu_require_mention", String(config.feishuRequireMention));
 
   // ── QQ ──
   // Upstream keys: bridge_qq_enabled, bridge_qq_app_id, bridge_qq_app_secret,

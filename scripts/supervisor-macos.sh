@@ -21,11 +21,13 @@ build_env_dict() {
     dict+="${indent}<key>${var}</key>\n${indent}<string>${val}</string>\n"
   done
 
-  # Forward CTI_* vars
+  # Forward CTI_* vars and proxy vars
   while IFS='=' read -r name val; do
-    case "$name" in CTI_*)
-      dict+="${indent}<key>${name}</key>\n${indent}<string>${val}</string>\n"
-      ;; esac
+    case "$name" in
+      CTI_*|HTTPS_PROXY|HTTP_PROXY|ALL_PROXY|NO_PROXY|https_proxy|http_proxy|no_proxy|NODE_USE_ENV_PROXY)
+        dict+="${indent}<key>${name}</key>\n${indent}<string>${val}</string>\n"
+        ;;
+    esac
   done < <(env)
 
   # Forward runtime-specific API keys

@@ -13,8 +13,8 @@ await esbuild.build({
     // breaks that path resolution.
     '@anthropic-ai/claude-agent-sdk',
     '@openai/codex-sdk',
-    // discord.js optional native deps
-    'bufferutil', 'utf-8-validate', 'zlib-sync', 'erlpack',
+    // discord.js optional native deps + ws (external for proxy patching)
+    'bufferutil', 'utf-8-validate', 'zlib-sync', 'erlpack', 'ws',
     // Node.js built-ins
     'fs', 'path', 'os', 'crypto', 'http', 'https', 'net', 'tls',
     'stream', 'events', 'url', 'util', 'child_process', 'worker_threads',
