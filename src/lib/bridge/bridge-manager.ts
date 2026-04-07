@@ -28,7 +28,7 @@ import {
   validateMode,
 } from './security/validators.js';
 import { readFileSync, existsSync, statSync, openSync, readSync, closeSync, fstatSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 
 // ── Session preview helpers ────────────────────────────────────
@@ -820,6 +820,35 @@ async function handleMessage(
         replyToMessageId: msg.messageId,
       };
       await deliver(adapter, errorResponse);
+    }
+
+    // ── Outbound file sending ──────────────────────────────────
+    // Send any files Claude created during this turn (images, documents).
+    if (result.createdFiles && result.createdFiles.length > 0 && adapter.sendFile) {
+      for (const filePath of result.createdFiles) {
+        try {
+          // Verify file still exists (Claude may have created then deleted it)
+          if (!existsSync(filePath)) {
+            console.log(`[bridge-manager] Skipping file (not found): ${filePath}`);
+            continue;
+          }
+          const fileName = basename(filePath);
+          const fileResult = await adapter.sendFile(msg.address.chatId, filePath, fileName);
+          if (fileResult.ok) {
+            store.insertAuditLog({
+              channelType: adapter.channelType,
+              chatId: msg.address.chatId,
+              direction: 'outbound',
+              messageId: fileResult.messageId || '',
+              summary: `[FILE] Sent: ${fileName}`,
+            });
+          } else {
+            console.warn(`[bridge-manager] Failed to send file ${fileName}:`, fileResult.error);
+          }
+        } catch (err) {
+          console.warn(`[bridge-manager] Error sending file ${filePath}:`, err instanceof Error ? err.message : err);
+        }
+      }
     }
 
     // Persist the actual SDK session ID for future resume.
