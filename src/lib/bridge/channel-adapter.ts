@@ -116,6 +116,17 @@ export abstract class BaseChannelAdapter {
    * Returns true if a card was finalized (caller should skip normal delivery).
    */
   onStreamEnd?(_chatId: string, _status: 'completed' | 'interrupted' | 'error', _responseText: string): Promise<boolean>;
+
+  /**
+   * Send a file (image or document) to the channel.
+   * Not all adapters support this — default returns failure.
+   * @param chatId - Platform-specific chat identifier
+   * @param filePath - Absolute path to the file on disk
+   * @param fileName - Display name for the file
+   */
+  async sendFile(_chatId: string, _filePath: string, _fileName: string): Promise<SendResult> {
+    return { ok: false, error: 'File sending not supported by this adapter' };
+  }
 }
 
 // ── Adapter Registry ────────────────────────────────────────────
