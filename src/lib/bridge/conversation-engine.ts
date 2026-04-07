@@ -45,6 +45,49 @@ export type OnPartialText = (fullText: string) => void;
  */
 export type OnToolEvent = (toolId: string, toolName: string, status: 'running' | 'complete' | 'error') => void;
 
+// ── Outbound file detection ──────────────────────────────────
+
+/** Extensions that should be sent back to IM as image messages. */
+const IMAGE_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.ico', '.svg',
+]);
+
+/** Extensions that should be sent back to IM as file messages. */
+const DOCUMENT_EXTENSIONS = new Set([
+  '.pdf', '.csv', '.xlsx', '.xls', '.docx', '.doc',
+  '.pptx', '.ppt', '.zip', '.tar', '.gz', '.7z',
+  '.mp3', '.mp4', '.wav', '.ogg', '.txt',
+]);
+
+/**
+ * Check if a file path has a sendable extension (image or document).
+ */
+export function isSendableFile(filePath: string): boolean {
+  const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
+  return IMAGE_EXTENSIONS.has(ext) || DOCUMENT_EXTENSIONS.has(ext);
+}
+
+/**
+ * Check if a file path is an image based on extension.
+ */
+export function isImageFile(filePath: string): boolean {
+  const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
+  return IMAGE_EXTENSIONS.has(ext);
+}
+
+/**
+ * Extract created file paths from a tool_use event.
+ * Only processes "Edit" tool events (which cover both Write and Edit in the Codex SDK mapping).
+ */
+export function extractCreatedFiles(toolName: string, input: unknown): string[] {
+  if (toolName !== 'Edit') return [];
+  const files = (input as Record<string, unknown>)?.files;
+  if (!Array.isArray(files)) return [];
+  return files
+    .filter((f: any) => f.kind === 'create' && typeof f.path === 'string')
+    .map((f: any) => f.path as string);
+}
+
 export interface ConversationResult {
   responseText: string;
   tokenUsage: TokenUsage | null;
@@ -54,6 +97,8 @@ export interface ConversationResult {
   permissionRequests: PermissionRequestInfo[];
   /** SDK session ID captured from status/result events, for session resume */
   sdkSessionId: string | null;
+  /** Absolute paths to files created by Claude during the conversation (only sendable types) */
+  createdFiles: string[];
 }
 
 /**
@@ -83,6 +128,7 @@ export async function processMessage(
       errorMessage: 'Session is busy processing another request',
       permissionRequests: [],
       sdkSessionId: null,
+      createdFiles: [],
     };
   }
 
@@ -214,6 +260,7 @@ async function consumeStream(
   let errorMessage = '';
   const seenToolResultIds = new Set<string>();
   const permissionRequests: PermissionRequestInfo[] = [];
+  const createdFiles: string[] = [];
   let capturedSdkSessionId: string | null = null;
 
   try {
@@ -256,6 +303,10 @@ async function consumeStream(
               });
               if (onToolEvent) {
                 try { onToolEvent(toolData.id, toolData.name, 'running'); } catch { /* non-critical */ }
+              }
+              const newFiles = extractCreatedFiles(toolData.name, toolData.input);
+              for (const f of newFiles) {
+                if (isSendableFile(f)) createdFiles.push(f);
               }
             } catch { /* skip */ }
             break;
@@ -397,6 +448,7 @@ async function consumeStream(
       errorMessage,
       permissionRequests,
       sdkSessionId: capturedSdkSessionId,
+      createdFiles,
     };
   } catch (e) {
     // Best-effort save on stream error
@@ -429,6 +481,7 @@ async function consumeStream(
       errorMessage: isAbort ? 'Task stopped by user' : (e instanceof Error ? e.message : 'Stream consumption error'),
       permissionRequests,
       sdkSessionId: capturedSdkSessionId,
+      createdFiles,
     };
   }
 }
