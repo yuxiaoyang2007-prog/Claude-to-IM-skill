@@ -21,6 +21,7 @@ import { JsonFileStore } from './store.js';
 import { SDKLLMProvider, resolveClaudeCliPath, preflightCheck } from './llm-provider.js';
 import { PendingPermissions } from './permission-gateway.js';
 import { setupLogger } from './logger.js';
+import { initContentGuard } from 'content-guard';
 
 const RUNTIME_DIR = path.join(CTI_HOME, 'runtime');
 const STATUS_FILE = path.join(RUNTIME_DIR, 'status.json');
@@ -121,6 +122,19 @@ async function main(): Promise<void> {
 
   const runId = crypto.randomUUID();
   console.log(`[claude-to-im] Starting bridge (run_id: ${runId})`);
+
+  // Initialize content guard (prompt injection detection)
+  initContentGuard({
+    enabled: config.injectionGuardEnabled,
+    minimaxApiKey: config.minimaxApiKey,
+    minimaxBaseUrl: config.minimaxBaseUrl,
+    minimaxModel: config.minimaxModel,
+    blockThreshold: config.injectionBlockThreshold,
+  });
+  console.log(
+    `[claude-to-im] Content guard: ${config.injectionGuardEnabled !== false ? 'enabled' : 'disabled'}` +
+    (config.minimaxApiKey ? ', LLM classifier: ready' : ', LLM classifier: no API key'),
+  );
 
   const settings = configToSettings(config);
   const store = new JsonFileStore(settings);

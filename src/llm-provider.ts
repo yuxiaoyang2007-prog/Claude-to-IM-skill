@@ -13,6 +13,7 @@ import type { LLMProvider, StreamChatParams, FileAttachment } from 'claude-to-im
 import type { PendingPermissions } from './permission-gateway.js';
 
 import { sseEvent } from './sse-utils.js';
+import { detectInjection, isExternalTool } from 'content-guard';
 
 // ── Environment isolation ──
 
@@ -427,6 +428,8 @@ export interface StreamState {
   hasReceivedResult: boolean;
   /** True once any text_delta has been emitted via stream_event. */
   hasStreamedText: boolean;
+  /** Maps tool_use_id → tool name, used to identify external tools for injection scanning. */
+  toolNames: Map<string, string>;
   /**
    * Full text captured from the final `assistant` message.
    * NOT emitted during normal flow (stream_event deltas handle that).
@@ -456,7 +459,7 @@ export class SDKLLMProvider implements LLMProvider {
           // Ring-buffer for recent stderr output (max 4 KB)
           const MAX_STDERR = 4096;
           let stderrBuf = '';
-          const state: StreamState = { hasReceivedResult: false, hasStreamedText: false, lastAssistantText: '' };
+          const state: StreamState = { hasReceivedResult: false, hasStreamedText: false, toolNames: new Map(), lastAssistantText: '' };
 
           try {
             const cleanEnv = buildSubprocessEnv();
@@ -634,6 +637,7 @@ export function handleMessage(
         event.type === 'content_block_start' &&
         event.content_block.type === 'tool_use'
       ) {
+        state.toolNames.set(event.content_block.id, event.content_block.name);
         controller.enqueue(
           sseEvent('tool_use', {
             id: event.content_block.id,
@@ -658,6 +662,7 @@ export function handleMessage(
           if (block.type === 'text' && block.text) {
             state.lastAssistantText += (state.lastAssistantText ? '\n' : '') + block.text;
           } else if (block.type === 'tool_use') {
+            state.toolNames.set(block.id, block.name);
             controller.enqueue(
               sseEvent('tool_use', {
                 id: block.id,
@@ -678,9 +683,35 @@ export function handleMessage(
         for (const block of content) {
           if (typeof block === 'object' && block !== null && 'type' in block && block.type === 'tool_result') {
             const rb = block as { tool_use_id: string; content?: unknown; is_error?: boolean };
-            const text = typeof rb.content === 'string'
+            let text = typeof rb.content === 'string'
               ? rb.content
               : JSON.stringify(rb.content ?? '');
+
+            // Content Guard: only scan external tool results for injection.
+            // Local tools (Read, Bash, Grep, Glob, Edit, Write, etc.) are trusted.
+            const toolName = state.toolNames.get(rb.tool_use_id) ?? '';
+            if (isExternalTool(toolName)) {
+              const scan = detectInjection(text);
+              if (scan.detected) {
+                const ruleIds = scan.matches.map(m => m.ruleId).join(',');
+                console.warn(
+                  `[content-guard] External tool "${toolName}" flagged: score=${scan.score}, ` +
+                  `severity=${scan.severity}, rules=[${ruleIds}]`,
+                );
+                if (scan.score >= 15) {
+                  text = `[BLOCKED: Prompt injection detected in ${toolName} output. ` +
+                    `Severity: ${scan.severity}, score: ${scan.score}. ` +
+                    `Rules: ${ruleIds}. Original content has been removed for safety.]`;
+                } else {
+                  text = `<external_content source="${toolName}" trust="suspicious" ` +
+                    `warning="Injection detected: ${scan.summary}">\n` +
+                    `${text}\n</external_content>`;
+                }
+              } else if (text.length > 200) {
+                text = `<external_content source="${toolName}" trust="untrusted">\n${text}\n</external_content>`;
+              }
+            }
+
             controller.enqueue(
               sseEvent('tool_result', {
                 tool_use_id: rb.tool_use_id,

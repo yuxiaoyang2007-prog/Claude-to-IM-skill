@@ -34,6 +34,17 @@ export interface Config {
   weixinMediaEnabled?: boolean;
   // Auto-approve all tool permission requests without user confirmation
   autoApprove?: boolean;
+  // -- Content Guard (prompt injection detection) --
+  /** Enable content guard for external data scanning. Default true. */
+  injectionGuardEnabled?: boolean;
+  /** MiniMax API key for LLM-based classification (stage 2). */
+  minimaxApiKey?: string;
+  /** MiniMax API base URL override. */
+  minimaxBaseUrl?: string;
+  /** MiniMax model override. Default MiniMax-M1. */
+  minimaxModel?: string;
+  /** Score threshold for blocking content outright. Default 15. */
+  injectionBlockThreshold?: number;
 }
 
 export const CTI_HOME = process.env.CTI_HOME || path.join(os.homedir(), ".claude-to-im");
@@ -114,6 +125,16 @@ export function loadConfig(): Config {
       ? env.get("CTI_WEIXIN_MEDIA_ENABLED") === "true"
       : undefined,
     autoApprove: env.get("CTI_AUTO_APPROVE") === "true",
+    // Content Guard
+    injectionGuardEnabled: env.has("CTI_INJECTION_GUARD_ENABLED")
+      ? env.get("CTI_INJECTION_GUARD_ENABLED") !== "false"
+      : true, // enabled by default
+    minimaxApiKey: process.env.CTI_MINIMAX_API_KEY || env.get("CTI_MINIMAX_API_KEY") || undefined,
+    minimaxBaseUrl: env.get("CTI_MINIMAX_BASE_URL") || undefined,
+    minimaxModel: env.get("CTI_MINIMAX_MODEL") || undefined,
+    injectionBlockThreshold: env.get("CTI_INJECTION_BLOCK_THRESHOLD")
+      ? Number(env.get("CTI_INJECTION_BLOCK_THRESHOLD"))
+      : undefined,
   };
 }
 
@@ -172,6 +193,15 @@ export function saveConfig(config: Config): void {
   out += formatEnvLine("CTI_WEIXIN_CDN_BASE_URL", config.weixinCdnBaseUrl);
   if (config.weixinMediaEnabled !== undefined)
     out += formatEnvLine("CTI_WEIXIN_MEDIA_ENABLED", String(config.weixinMediaEnabled));
+
+  // Content Guard
+  if (config.injectionGuardEnabled !== undefined)
+    out += formatEnvLine("CTI_INJECTION_GUARD_ENABLED", String(config.injectionGuardEnabled));
+  out += formatEnvLine("CTI_MINIMAX_API_KEY", config.minimaxApiKey);
+  out += formatEnvLine("CTI_MINIMAX_BASE_URL", config.minimaxBaseUrl);
+  out += formatEnvLine("CTI_MINIMAX_MODEL", config.minimaxModel);
+  if (config.injectionBlockThreshold !== undefined)
+    out += formatEnvLine("CTI_INJECTION_BLOCK_THRESHOLD", String(config.injectionBlockThreshold));
 
   fs.mkdirSync(CTI_HOME, { recursive: true });
   const tmpPath = CONFIG_PATH + ".tmp";
