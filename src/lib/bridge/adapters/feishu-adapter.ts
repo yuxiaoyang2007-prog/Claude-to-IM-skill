@@ -16,6 +16,8 @@
  */
 
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import * as lark from '@larksuiteoapi/node-sdk';
 import type {
   ChannelType,
@@ -44,6 +46,22 @@ const DEDUP_MAX = 1000;
 
 /** Max file download size (20 MB). */
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
+
+/** Max image upload size for Feishu (10 MB). */
+const MAX_IMAGE_UPLOAD_SIZE = 10 * 1024 * 1024;
+
+/** Max file upload size for Feishu (30 MB). */
+const MAX_FILE_UPLOAD_SIZE = 30 * 1024 * 1024;
+
+/** Feishu file_type mapping by extension. */
+const FEISHU_FILE_TYPE: Record<string, string> = {
+  '.mp4': 'mp4',
+  '.pdf': 'pdf',
+  '.doc': 'doc', '.docx': 'doc',
+  '.xls': 'xls', '.xlsx': 'xls',
+  '.ppt': 'ppt', '.pptx': 'ppt',
+  '.mp3': 'opus', '.ogg': 'opus', '.wav': 'opus',
+};
 
 /** Feishu emoji type for typing indicator (same as Openclaw). */
 const TYPING_EMOJI = 'Typing';
@@ -654,6 +672,132 @@ export class FeishuAdapter extends BaseChannelAdapter {
       return this.sendAsCard(message.address.chatId, text);
     }
     return this.sendAsPost(message.address.chatId, text);
+  }
+
+  /**
+   * Send a file (image or document) to a Feishu chat.
+   * Images are uploaded via im.image.create, files via im.file.create.
+   */
+  async sendFile(chatId: string, filePath: string, fileName: string): Promise<SendResult> {
+    if (!this.restClient) {
+      return { ok: false, error: 'Feishu client not initialized' };
+    }
+
+    // Check file exists
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(filePath);
+    } catch {
+      console.warn(`[feishu-adapter] sendFile: file not found: ${filePath}`);
+      return { ok: false, error: `File not found: ${filePath}` };
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const isImage = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.ico'].includes(ext);
+
+    if (isImage) {
+      return this.uploadAndSendImage(chatId, filePath, stat.size);
+    }
+    return this.uploadAndSendFile(chatId, filePath, fileName, ext, stat.size);
+  }
+
+  /**
+   * Upload image to Feishu and send as image message.
+   */
+  private async uploadAndSendImage(chatId: string, filePath: string, fileSize: number): Promise<SendResult> {
+    if (fileSize > MAX_IMAGE_UPLOAD_SIZE) {
+      console.warn(`[feishu-adapter] Image too large (${fileSize} bytes > ${MAX_IMAGE_UPLOAD_SIZE}): ${filePath}`);
+      return { ok: false, error: `Image exceeds 10MB limit` };
+    }
+
+    try {
+      // Upload image via Feishu SDK: POST /open-apis/im/v1/images
+      const uploadRes = await this.restClient!.im.image.create({
+        data: {
+          image_type: 'message',
+          image: fs.createReadStream(filePath),
+        },
+      });
+
+      const imageKey = (uploadRes as any)?.image_key || (uploadRes as any)?.data?.image_key;
+      if (!imageKey) {
+        console.warn('[feishu-adapter] Image upload returned no image_key:', uploadRes);
+        return { ok: false, error: 'Image upload failed: no image_key returned' };
+      }
+
+      // Send image message
+      const sendRes = await this.restClient!.im.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: chatId,
+          msg_type: 'image',
+          content: JSON.stringify({ image_key: imageKey }),
+        },
+      });
+
+      if (sendRes?.data?.message_id) {
+        console.log(`[feishu-adapter] Image sent: ${filePath} → ${imageKey}`);
+        return { ok: true, messageId: sendRes.data.message_id };
+      }
+      return { ok: false, error: sendRes?.msg || 'Image send failed' };
+    } catch (err) {
+      console.error('[feishu-adapter] Image upload/send error:', err instanceof Error ? err.message : err);
+      return { ok: false, error: err instanceof Error ? err.message : 'Image send failed' };
+    }
+  }
+
+  /**
+   * Upload file to Feishu and send as file message.
+   */
+  private async uploadAndSendFile(
+    chatId: string,
+    filePath: string,
+    fileName: string,
+    ext: string,
+    fileSize: number,
+  ): Promise<SendResult> {
+    if (fileSize > MAX_FILE_UPLOAD_SIZE) {
+      console.warn(`[feishu-adapter] File too large (${fileSize} bytes > ${MAX_FILE_UPLOAD_SIZE}): ${filePath}`);
+      return { ok: false, error: `File exceeds 30MB limit` };
+    }
+
+    const fileType = FEISHU_FILE_TYPE[ext] || 'stream';
+
+    try {
+      // Upload file via Feishu SDK: POST /open-apis/im/v1/files
+      const uploadRes = await this.restClient!.im.file.create({
+        data: {
+          file_type: fileType as any,
+          file_name: fileName,
+          file: fs.createReadStream(filePath),
+        },
+      });
+
+      const fileKey = (uploadRes as any)?.file_key || (uploadRes as any)?.data?.file_key;
+      if (!fileKey) {
+        console.warn('[feishu-adapter] File upload returned no file_key:', uploadRes);
+        return { ok: false, error: 'File upload failed: no file_key returned' };
+      }
+
+      // Send file message
+      const sendRes = await this.restClient!.im.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: chatId,
+          msg_type: 'file',
+          content: JSON.stringify({ file_key: fileKey }),
+        },
+      });
+
+      if (sendRes?.data?.message_id) {
+        console.log(`[feishu-adapter] File sent: ${filePath} → ${fileKey}`);
+        return { ok: true, messageId: sendRes.data.message_id };
+      }
+      return { ok: false, error: sendRes?.msg || 'File send failed' };
+    } catch (err) {
+      console.error('[feishu-adapter] File upload/send error:', err instanceof Error ? err.message : err);
+      return { ok: false, error: err instanceof Error ? err.message : 'File send failed' };
+    }
   }
 
   /**
