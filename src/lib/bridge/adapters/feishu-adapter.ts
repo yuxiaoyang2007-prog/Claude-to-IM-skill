@@ -1103,8 +1103,14 @@ export class FeishuAdapter extends BaseChannelAdapter {
         }
       }
 
-      // Require @mention check
-      const requireMention = getBridgeContext().store.getSetting('bridge_feishu_require_mention') !== 'false';
+      // Require @mention check (store setting > env var > default true)
+      const storeSetting = getBridgeContext().store.getSetting('bridge_feishu_require_mention');
+      const envSetting = process.env.CTI_FEISHU_REQUIRE_MENTION;
+      const requireMention = storeSetting !== null
+        ? storeSetting !== 'false'
+        : envSetting !== undefined
+          ? envSetting !== 'false'
+          : true;
       if (requireMention && !this.isBotMentioned(msg.mentions)) {
         console.log('[feishu-adapter] Group message ignored (bot not @mentioned), chatId:', chatId, 'msgId:', msg.message_id);
         try {
